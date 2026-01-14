@@ -1,0 +1,12 @@
+name: bpd-prescribing-uk-shiny
+title: bpd-prescribing-uk-shiny
+username: dop-mhds
+account: dop-mhds
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 16426481
+bundleId: 11444527
+url: https://dop-mhds.shinyapps.io/bpd-prescribing-uk-shiny/
+version: 1
+asMultiple: FALSE
+asStatic: FALSE

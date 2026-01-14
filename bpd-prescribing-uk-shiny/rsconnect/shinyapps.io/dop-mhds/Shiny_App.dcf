@@ -1,0 +1,12 @@
+name: Shiny_App
+title: Shiny_App
+username: dop-mhds
+account: dop-mhds
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 16426388
+bundleId: 11444513
+url: https://dop-mhds.shinyapps.io/Shiny_App/
+version: 1
+asMultiple: FALSE
+asStatic: FALSE
