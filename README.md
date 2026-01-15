@@ -10,6 +10,7 @@ The following R scripts were used to perform data processing and analyses:
 
 -   `2_monthly_line_plot.R`: Create line plots of the proportion of patients prescribed each medication class in the 12 months before and after first-recorded BPD diagnosis.
 -   `3_sankey_plot.R`: Create Sankey plots and heatmaps of Patterns of treatment persistence and medication class switching within one year of first-recorded BPD diagnosis.
+-   `4_cohort_medications`: Create a summary table listing all antipsychotics, antidepressants, and mood stabilisers prescibed to the cohort between 2000 and 2022.
 
 ### Code lists
 
