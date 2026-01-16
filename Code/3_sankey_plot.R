@@ -51,6 +51,8 @@ load("Data/bipolar_cohort_moodstabs.rdata")
 load("Data/bipolar_cohort_aps.rdata")
 load("Data/bipolar_cohort.rdata")
 
+wd <- getwd()
+
 # Parameters
 overlap_days <- 30  # drugs within 30 days are considered combination
 interrupt_cutoff_intervals <- 3  # >= 3 consecutive intervals

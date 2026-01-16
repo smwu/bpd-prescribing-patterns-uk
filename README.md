@@ -8,9 +8,12 @@ This repository contains code for analyzing patterns of antidepressant, antipsyc
 
 The following R scripts were used to perform data processing and analyses:
 
+-   `0_cohort_derivation.R`: Derive and process data for cohort of patients with first bipolar diagnosis between 2000 and 2022.
+-   `1_baseline_characteristics.R`: Create table of baseline characteristics for patient cohort.
 -   `2_monthly_line_plot.R`: Create line plots of the proportion of patients prescribed each medication class in the 12 months before and after first-recorded BPD diagnosis.
 -   `3_sankey_plot.R`: Create Sankey plots and heatmaps of Patterns of treatment persistence and medication class switching within one year of first-recorded BPD diagnosis.
--   `4_cohort_medications`: Create a summary table listing all antipsychotics, antidepressants, and mood stabilisers prescibed to the cohort between 2000 and 2022.
+-   `4_cohort_medications.R`: Create a summary table listing all antipsychotics, antidepressants, and mood stabilisers prescibed to the cohort between 2000 and 2022.
+-   `5_regression_models.R`: Run regression models examining associations with lithium and antidepressant monotherapy prescription post-diagnosis, and save output.
 
 ### Code lists
 
@@ -22,4 +25,4 @@ The `bpd-prescribing-uk-shiny` folder contains code (`app.R`) and aggregated, de
 
 ### Outputs
 
-The `Outputs` folder contains saved analysis figures that are created from the code.
+The `Outputs` folder contains saved analysis outputs that are created from the code.

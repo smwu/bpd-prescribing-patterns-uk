@@ -33,6 +33,7 @@ load("Data/bipolar_cohort_moodstabs.rdata")
 load("Data/bipolar_cohort_aps.rdata")
 load("Data/bipolar_cohort.rdata")
 
+wd <- getwd()
 
 #======= Prescription data
 
