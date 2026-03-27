@@ -52,6 +52,7 @@ load("Data/bipolar_cohort_aps.rdata")
 load("Data/bipolar_cohort.rdata")
 
 wd <- getwd()
+wd <- paste0(wd, "/")
 
 # Parameters
 overlap_days <- 30  # drugs within 30 days are considered combination
@@ -890,7 +891,97 @@ alluvial_plot_li_first_state
 # )
 
 
-# Lithium with all categories
+## Lithium with 60-day concurrency interval 
+
+prescriptions_combs_final_li_60 <- get_treatment_intervals(
+  prescriptions_prep = prescriptions_prep_li, overlap_days = 60, 
+  interrupt_cutoff_intervals = interrupt_cutoff_intervals)
+
+# Collapse lithium + 2 or more classes into one category
+prescriptions_combs_final_li2_60 <- prescriptions_combs_final_li_60 %>%
+  mutate(
+    # Preserve the raw combo only for non-lithium rows
+    nonli_combo_raw = if_else(!grepl("Lithium", drug_combination, ignore.case = TRUE),
+                              drug_combination, NA_character_),
+    drug_combination = case_when(
+      drug_combination %in% c("AD; AP; Lithium", "AD; AP; Lithium; MS",
+                              "AD; Lithium; MS", "AP; Lithium; MS") ~ "Lithium; 2+",
+      drug_combination %in% c("AD", "AD; AP", "AD; AP; MS", "AD; MS", "AP", 
+                              "AP; MS", "MS") ~ "Non-Lithium",
+      # Reorder some names so lithium comes first
+      drug_combination == "AD; Lithium" ~ "Lithium; AD",
+      drug_combination == "AP; Lithium" ~ "Lithium; AP",
+      .default = drug_combination))
+
+trajectories_limit_li_60 <- derive_trajectories(
+  prescriptions_combs_final = prescriptions_combs_final_li2_60, 
+  max_switches = max_switches, 
+  lithium = TRUE)
+
+trajectories_limit_counts_li_60 <- make_safe_counts(trajectories_limit_li_60)
+
+alluvial_plot_li_60 <- create_sankey(trajectories_limit = trajectories_limit_counts_li_60,
+                                     state_levels = state_levels_li, 
+                                     state_colors = state_colors_li,
+                                     state_full_labels = state_full_labels_li, 
+                                     text_size = 2.5)
+alluvial_plot_li_60
+
+# # Save the plot
+# ggsave(
+#   plot = alluvial_plot_li_60,
+#   filename = paste0(wd, "Outputs/", "overall_switches_alluvial_lithium_60day", 
+#                     today(), ".png"),
+#   dpi = 300, width = 13, height = 9, bg = "white"
+# )
+
+
+## Lithium with 1-day concurrency interval and 90-day interruption cutoff
+
+prescriptions_combs_final_li_1 <- get_treatment_intervals(
+  prescriptions_prep = prescriptions_prep_li, overlap_days = 1, 
+  interrupt_cutoff_intervals = 90)
+
+# Collapse lithium + 2 or more classes into one category
+prescriptions_combs_final_li2_1 <- prescriptions_combs_final_li_1 %>%
+  mutate(
+    # Preserve the raw combo only for non-lithium rows
+    nonli_combo_raw = if_else(!grepl("Lithium", drug_combination, ignore.case = TRUE),
+                              drug_combination, NA_character_),
+    drug_combination = case_when(
+      drug_combination %in% c("AD; AP; Lithium", "AD; AP; Lithium; MS",
+                              "AD; Lithium; MS", "AP; Lithium; MS") ~ "Lithium; 2+",
+      drug_combination %in% c("AD", "AD; AP", "AD; AP; MS", "AD; MS", "AP", 
+                              "AP; MS", "MS") ~ "Non-Lithium",
+      # Reorder some names so lithium comes first
+      drug_combination == "AD; Lithium" ~ "Lithium; AD",
+      drug_combination == "AP; Lithium" ~ "Lithium; AP",
+      .default = drug_combination))
+
+trajectories_limit_li_1 <- derive_trajectories(
+  prescriptions_combs_final = prescriptions_combs_final_li2_1, 
+  max_switches = max_switches, 
+  lithium = TRUE)
+
+trajectories_limit_counts_li_1 <- make_safe_counts(trajectories_limit_li_1)
+
+alluvial_plot_li_1 <- create_sankey(trajectories_limit = trajectories_limit_counts_li_1,
+                                     state_levels = state_levels_li, 
+                                     state_colors = state_colors_li,
+                                     state_full_labels = state_full_labels_li, 
+                                     text_size = 2.5)
+alluvial_plot_li_1
+
+# # Save the plot
+# ggsave(
+#   plot = alluvial_plot_li_1,
+#   filename = paste0(wd, "Outputs/", "overall_switches_alluvial_lithium_1day", 
+#                     today(), ".png"),
+#   dpi = 300, width = 13, height = 9, bg = "white"
+# )
+
+
+## Lithium with all categories
 
 #Lithium category
 
@@ -1444,3 +1535,5 @@ second_to_third_li
 #   filename = paste0(wd, "Outputs/", "second_transition_li_heatmap_", today(), ".pdf"),
 #   dpi = 300, width = 8, height = 5, units = "in", bg = "white"
 # )
+
+

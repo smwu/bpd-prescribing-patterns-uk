@@ -26,7 +26,8 @@ library(gt)
 library(ggrepel)
 library(ggpubr)
 library(rlang)
-
+library(flextable)
+library(officer)
 
 load("Data/bipolar_cohort_ads.rdata")
 load("Data/bipolar_cohort_moodstabs.rdata")
@@ -571,6 +572,379 @@ combined
 #   filename = paste0(wd, "Outputs/", "Percentage_lineplot_pre_from_covid_combined",
 #                     today(), ".pdf"),
 #   dpi = 300, width = 11, height = 9, bg = "white")
+
+
+#========== Monotherapy defined as single-agent ================================
+
+## Single-agent summaries ##
+# For each patient and each month since diagnosis, combine all unique drug 
+# ingredients prescribed into a single semicolon-separated list
+monthly_ingredients <- prescriptions_with_month %>%
+  mutate(
+    drug_ingredient = paste0(drug_type, "_", ingredient)
+  ) %>%
+  group_by(patid, month_since_diag) %>%
+  summarise(
+    ingredient_combined = paste(unique(drug_ingredient), collapse = "; "),
+    .groups = "drop"
+  ) %>%
+  arrange(patid, month_since_diag) 
+
+# Pivot to wide format — one row per patid
+wide_monthly_ingredients <- monthly_ingredients %>%
+  pivot_wider(
+    names_from = month_since_diag,
+    values_from = ingredient_combined,
+    names_prefix = "month_"
+  )
+
+# Add missing month columns (month_-12 to month_12) and replace NAs with "None"
+all_months <- paste0("month_", c(-12:-1, 1:12))
+wide_monthly_ingredients <- wide_monthly_ingredients %>%
+  mutate(across(everything(), as.character)) %>%
+  mutate(across(all_of(setdiff(all_months, names(.))), ~NA_character_)) %>%
+  mutate(across(all_of(all_months), ~replace_na(.x, "None")))
+
+# Incorporate prescription data into full cohort
+final_df_monthly_ingredients <- unique_patids %>%
+  left_join(wide_monthly_ingredients, by = "patid") %>%
+  mutate(across(starts_with("month_"), ~replace_na(.x, "None")))
+
+# Reorder columns
+final_df_monthly_ingredients <- final_df_monthly_ingredients %>%
+  select(patid, all_of(all_months))
+
+# Incorporate censoring information into final dataset
+# All months after censoring are set to NA
+# Note: "None" means no prescription recorded, whereas NA means censored
+final_df_ingredients <- final_df_monthly_ingredients %>%
+  left_join(
+    censor_dates %>% select(patid, month_since_diag, within_12_months),
+    by = "patid"
+  ) %>%
+  mutate(across(all_of(paste0("month_", 1:12)), ~as.character(.x))) %>%
+  rowwise() %>%
+  mutate(across(
+    paste0("month_", 1:12),
+    ~if (!is.na(month_since_diag) && within_12_months &&
+         as.integer(str_extract(cur_column(), "\\d+")) >= month_since_diag) {
+      NA_character_
+    } else {
+      .x
+    }
+  )) %>%
+  ungroup() %>%
+  select(-month_since_diag, -within_12_months)
+
+# Overall % of patients per drug combo pre- and post-diagnosis 
+# Long format with month number and period (pre vs post)
+long_year_ingredients <- final_df_ingredients %>%
+  pivot_longer(
+    cols = starts_with("month_"),
+    names_to = "month",
+    values_to = "ingredient_combination"
+  ) %>%
+  mutate(
+    month_num = as.integer(str_extract(month, "-?\\d+")),
+    period = case_when(
+      month_num < 0 ~ "Year pre-diagnosis",
+      month_num > 0 ~ "Year post-diagnosis",
+      TRUE ~ NA_character_   # should drop the 0 month if it ever existed
+    )
+  ) %>%
+  # Drop censored months (NA) and months outside the ±12 window (already handled)
+  filter(!is.na(period), !is.na(ingredient_combination))
+
+
+# Denominator: number of patients with any observed time in each period
+denom_period_ingredients <- long_year_ingredients %>%
+  distinct(patid, period) %>%
+  count(period, name = "n_patients_period")
+
+# For each period, count patients who ever had each drug combination at least once
+overall_yearly_pct_ingredients <- long_year_ingredients %>%
+  distinct(patid, period, ingredient_combination) %>%   # "ever on" that combo in that year
+  count(period, ingredient_combination, name = "n_patients") %>%
+  left_join(denom_period_ingredients, by = "period") %>%
+  mutate(
+    percent_patients = 100 * n_patients / n_patients_period
+  ) %>%
+  arrange(period, desc(percent_patients))
+
+overall_yearly_pct_ingredients
+
+# Number of patients
+n_patients <- length(unique(final_df_ingredients$patid))
+
+# Count the number of unique ingredients within each drug class, for each 
+# patient and month, for year pre- and post-diagnosis
+overall_yearly_ingredients <- overall_yearly_pct_ingredients %>%
+  mutate(AD_times = str_count(ingredient_combination, "AD"),
+         AP_times = str_count(ingredient_combination, "AP"),
+         MS_times = str_count(ingredient_combination, "MS"),
+         drug_combo = paste0("AD_", AD_times, "_AP_", AP_times, "_MS_", MS_times))
+
+# Count the number of times that multiple drugs within the same drug class
+# were prescribed, for year pre- and post-diagnosis
+overall_yearly_combo <- overall_yearly_ingredients %>%
+  group_by(period, drug_combo) %>%
+  summarise(sum_n_patients = sum(n_patients), 
+            n_patients_period = first(n_patients_period),
+            ingredient_combos = paste(unique(ingredient_combination), 
+                                      collapse = " OR ")) %>%
+  mutate(sum_percent_patients = 100 * sum_n_patients / n_patients_period)
+
+# Filter to pre-diagnosis
+overall_yearly_combo_pre <- overall_yearly_combo %>%
+  filter(period == "Year pre-diagnosis") %>%
+  arrange(desc(sum_percent_patients))
+
+# Filter to post-diagnosis
+overall_yearly_combo_post <- overall_yearly_combo %>%
+  filter(period == "Year post-diagnosis") %>%
+  arrange(desc(sum_percent_patients))
+
+## Filter to combinations with more than 1 drug within the same drug class
+overall_yearly_combo_therapy_pre <- overall_yearly_combo_pre %>%
+  filter(str_detect(drug_combo, "[23456789]"))
+overall_yearly_combo_therapy_post <- overall_yearly_combo_post %>%
+  filter(str_detect(drug_combo, "[23456789]"))
+
+# How many patients had multiple drugs within the same class prescribed for 
+# at least one month in the year pre- or post-diagnosis: 23.7% pre, 25.5% post
+sum(overall_yearly_combo_therapy_pre$sum_percent_patients)
+sum(overall_yearly_combo_therapy_post$sum_percent_patients)
+
+
+### Create table of multiple drugs within the same class among those with 
+### monotherapy
+
+## AD class monotherapy
+# Filter to those with AD monotherapy for each month
+AD_monotherapy <- long_year_ingredients %>%
+  filter(str_count(ingredient_combination, "AD") >= 1 & 
+           str_count(ingredient_combination, "AP") == 0 & 
+           str_count(ingredient_combination, "MS") == 0)
+# Create variable for multiple drugs within the same class
+AD_monotherapy <- AD_monotherapy %>%
+  mutate(count_multiple = str_count(ingredient_combination, "AD")) %>%
+  # combine 3+ into one category
+  mutate(count_multiple = ifelse(count_multiple >= 3, "3+", count_multiple))
+
+# Calculate prevalence of multiple ingredients within AD monotherapy
+# Denominator is all individuals on AD class monotherapy in each month
+# contributing non-censored time. Individuals are dropped from the month 
+# after censoring
+summary_AD_monotherapy <- AD_monotherapy %>%
+  group_by(month, count_multiple) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(month) %>%
+  mutate(percent = n / sum(n) * 100) %>%
+  ungroup()
+# Summary table
+summary_AD_monotherapy_table <- summary_AD_monotherapy %>%
+  select(starts_with("month_")) %>%
+  tbl_summary(
+    by = NULL,
+    statistic = list(all_categorical() ~ "{n} ({p}%)"),
+    missing = "no"
+  )
+
+## AP class monotherapy
+# Filter to those with AP monotherapy for each month
+AP_monotherapy <- long_year_ingredients %>%
+  filter(str_count(ingredient_combination, "AP") >= 1 & 
+           str_count(ingredient_combination, "AD") == 0 & 
+           str_count(ingredient_combination, "MS") == 0)
+# Create variable for multiple drugs within the same class
+AP_monotherapy <- AP_monotherapy %>%
+  mutate(count_multiple = str_count(ingredient_combination, "AP")) %>%
+  # combine 3+ into one category
+  mutate(count_multiple = ifelse(count_multiple >= 3, "3+", count_multiple))
+# Calculate prevalence of multiple ingredients within AP monotherapy
+summary_AP_monotherapy <- AP_monotherapy %>%
+  group_by(month, count_multiple) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(month) %>%
+  mutate(percent = n / sum(n) * 100) %>%
+  ungroup()
+
+
+## MS class monotherapy
+# Filter to those with MS monotherapy for each month
+MS_monotherapy <- long_year_ingredients %>%
+  filter(str_count(ingredient_combination, "MS") >= 1 & 
+           str_count(ingredient_combination, "AP") == 0 & 
+           str_count(ingredient_combination, "AD") == 0)
+# Create variable for multiple drugs within the same class
+MS_monotherapy <- MS_monotherapy %>%
+  mutate(count_multiple = str_count(ingredient_combination, "MS")) %>%
+  # combine 3+ into one category
+  mutate(count_multiple = ifelse(count_multiple >= 3, "3+", count_multiple))
+# Calculate prevalence of multiple ingredients within MS monotherapy
+summary_MS_monotherapy <- MS_monotherapy %>%
+  group_by(month, count_multiple) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(month) %>%
+  mutate(percent = n / sum(n) * 100) %>%
+  ungroup()
+
+
+### Helper function to create table examining within-class multiple drugs
+# Format the mutliple drugs within the same class monotherapy tables
+# df_sub: input drug table to format
+# group_name: name of monotherapy group
+# month_levels: vector of month levels
+# digits: number of digits to round to
+make_med_table <- function(df_sub, group_name, month_levels, digits = 1) {
+  # Main 3-row table: 1, 2, 3+
+  main_part <- df_sub %>%
+    mutate(
+      count_multiple = factor(count_multiple, levels = c("1", "2", "3+")),
+      month_label = paste("Month", sub("month_", "", month)),
+      cell = paste0(n, "\n(", format(round(percent, digits), digits), "%)")
+    ) %>%
+    select(count_multiple, month_label, cell) %>%
+    distinct() %>%
+    complete(
+      count_multiple,
+      month_label = month_levels,
+      fill = list(cell = "")
+    ) %>%
+    pivot_wider(
+      id_cols = count_multiple,
+      names_from = month_label,
+      values_from = cell
+    ) %>%
+    arrange(count_multiple) %>%
+    mutate(
+      `Number of Medications` = as.character(count_multiple),
+      group = group_name
+    ) %>%
+    select(group, `Number of Medications`, all_of(month_levels))
+  
+  # Total row: sum n across medication categories for each month
+  total_part <- df_sub %>%
+    mutate(
+      month_label = paste("Month", sub("month_", "", month))
+    ) %>%
+    group_by(month_label) %>%
+    summarise(total_n = sum(n, na.rm = TRUE), .groups = "drop") %>%
+    complete(
+      month_label = month_levels,
+      fill = list(total_n = 0)
+    ) %>%
+    mutate(
+      total_n = as.character(total_n),
+      group = group_name,
+      `Number of Medications` = "Total"
+    ) %>%
+    select(group, `Number of Medications`, month_label, total_n) %>%
+    pivot_wider(
+      id_cols = c(group, `Number of Medications`),
+      names_from = month_label,
+      values_from = total_n
+    ) %>%
+    select(group, `Number of Medications`, all_of(month_levels))
+  
+  bind_rows(main_part, total_part)
+}
+
+### Create pre-diagnosis tables for each drug class, then combine
+
+month_levels_pre <- paste("Month", -12:-1)
+tab_AD_pre <- make_med_table(summary_AD_monotherapy, 
+                             "Antidepressant Class Monotherapy", 
+                             month_levels = month_levels_pre)
+tab_AP_pre <- make_med_table(summary_AP_monotherapy, 
+                             "Antipsychotic Class Monotherapy", 
+                             month_levels = month_levels_pre)
+tab_MS_pre <- make_med_table(summary_MS_monotherapy, 
+                             "Mood Stabiliser Class Monotherapy", 
+                             month_levels = month_levels_pre)
+combined_tab_pre <- bind_rows(tab_AD_pre, tab_AP_pre, tab_MS_pre) %>%
+  as_grouped_data(
+    groups = "group",
+    columns = c("Number of Medications", month_levels_pre)
+  )
+
+# Display pre-diagnosis table
+# gt_table_pre <- combined_tab_pre %>%
+#   gt(groupname_col = "group") %>%
+#   cols_hide(columns = group) %>%
+#   cols_align(
+#     align = "left",
+#     columns = `Number of Medications`
+#   ) %>%
+#   cols_align(
+#     align = "center",
+#     columns = -`Number of Medications`
+#   ) %>%
+#   tab_style(
+#     style = cell_text(weight = "bold"),
+#     locations = cells_column_labels(everything())
+#   )
+# gt_table_pre
+
+ft_pre <- combined_tab_pre %>%
+  flextable() %>%
+  bold(part = "header") %>%
+  fontsize(size = 9, part = "all") %>%          # smaller text
+  padding(padding = 2, part = "all") %>%        # tighter cells
+  set_table_properties(
+    layout = "autofit",
+    width = 1
+  )
+
+
+### Create post-diagnosis tables for each drug class, then combine
+
+month_levels_post <- paste("Month", 1:12)
+tab_AD_post <- make_med_table(summary_AD_monotherapy, 
+                             "Antidepressant Class Monotherapy", 
+                             month_levels = month_levels_post)
+tab_AP_post <- make_med_table(summary_AP_monotherapy, 
+                             "Antipsychotic Class Monotherapy", 
+                             month_levels = month_levels_post)
+tab_MS_post <- make_med_table(summary_MS_monotherapy, 
+                             "Mood Stabiliser Class Monotherapy", 
+                             month_levels = month_levels_post)
+combined_tab_post <- bind_rows(tab_AD_post, tab_AP_post, tab_MS_post) %>%
+  as_grouped_data(
+    groups = "group",
+    columns = c("Number of Medications", month_levels_post)
+  )
+
+# Display post-diagnosis table
+ft_post <- combined_tab_post %>%
+  flextable() %>%
+  bold(part = "header") %>%
+  fontsize(size = 9, part = "all") %>%          # smaller text
+  padding(padding = 2, part = "all") %>%        # tighter cells
+  set_table_properties(
+    layout = "autofit",
+    width = 1
+  )
+
+landscape_section <- prop_section(
+  page_size = page_size(
+    orient = "landscape",
+    width = 11.7,
+    height = 8.3
+  ), 
+  type = "continuous",
+  page_margins = page_mar()
+)
+## Save pre-diagnosis and post-diagnosis tables to word document
+doc <- read_docx() %>%
+  body_end_section_continuous() %>%
+  body_set_default_section(landscape_section) %>%
+  body_add_flextable(ft_pre) %>%
+  body_add_par("") %>%
+  body_add_flextable(ft_post)
+print(doc, target = paste0(wd, "Outputs/", "multiple_meds_within_class", 
+                           today(), ".docx"))
+
 
 #========== Miscellaneous ======================================================
 
