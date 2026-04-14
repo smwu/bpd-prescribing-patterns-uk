@@ -684,6 +684,60 @@ overall_yearly_ingredients <- overall_yearly_pct_ingredients %>%
          MS_times = str_count(ingredient_combination, "MS"),
          drug_combo = paste0("AD_", AD_times, "_AP_", AP_times, "_MS_", MS_times))
 
+# Get the most common within-class combination therapy for each class
+# AD
+AD_combo <- overall_yearly_ingredients %>%
+  filter(str_count(ingredient_combination, "AD") >= 2 & 
+           str_count(ingredient_combination, "AP") == 0 & 
+           str_count(ingredient_combination, "MS") == 0)
+# Most common AD combo pre-diagnosis were:
+# Citalopram and Mirtazapine (0.7%) 
+# Citalopram and Amitriptyline (0.5%)
+AD_combo %>% 
+  filter(period == "Year pre-diagnosis") %>%
+  head()
+# Most common AD combo post-diagnosis were:
+# Mirtazapine and Venlafaxine (0.2%)
+# Citalopram and Mirtazapine (0.2%)
+AD_combo %>% 
+  filter(period == "Year post-diagnosis") %>%
+  head()
+# AP
+AP_combo <- overall_yearly_ingredients %>%
+  filter(str_count(ingredient_combination, "AP") >= 2 & 
+           str_count(ingredient_combination, "AD") == 0 & 
+           str_count(ingredient_combination, "MS") == 0)
+# Most common AP combo pre-diagnosis were:
+# Aripiprazole and Quetiapine (0.1%)
+# Aripiprazole and Olanzapine (0.1%)
+AP_combo %>% 
+  filter(period == "Year pre-diagnosis") %>%
+  head()
+# Most common AP combo post-diagnosis were:
+# Aripiprazole and Quetiapine (0.3%)
+# Olanzapine and Quetiapine (0.3%)
+AP_combo %>% 
+  filter(period == "Year post-diagnosis") %>%
+  head()
+# MS
+MS_combo <- overall_yearly_ingredients %>%
+  filter(str_count(ingredient_combination, "MS") >= 2 & 
+           str_count(ingredient_combination, "AD") == 0 & 
+           str_count(ingredient_combination, "AP") == 0)
+# Most common MS combo pre-diagnosis were:
+# Lithium and Valproate (0.1%)
+# Carbamazepine and Lithium (0.1%)
+MS_combo %>% 
+  filter(period == "Year pre-diagnosis") %>%
+  head()
+# Most common MS combo post-diagnosis were:
+# Lithium and Valproate (0.4%)
+# Lamotrigine and Valproate (0.2%)
+MS_combo %>% 
+  filter(period == "Year post-diagnosis") %>%
+  head()
+
+
 # Count the number of times that multiple drugs within the same drug class
 # were prescribed, for year pre- and post-diagnosis
 overall_yearly_combo <- overall_yearly_ingredients %>%
@@ -741,14 +795,7 @@ summary_AD_monotherapy <- AD_monotherapy %>%
   group_by(month) %>%
   mutate(percent = n / sum(n) * 100) %>%
   ungroup()
-# Summary table
-summary_AD_monotherapy_table <- summary_AD_monotherapy %>%
-  select(starts_with("month_")) %>%
-  tbl_summary(
-    by = NULL,
-    statistic = list(all_categorical() ~ "{n} ({p}%)"),
-    missing = "no"
-  )
+
 
 ## AP class monotherapy
 # Filter to those with AP monotherapy for each month
@@ -797,31 +844,6 @@ summary_MS_monotherapy <- MS_monotherapy %>%
 # month_levels: vector of month levels
 # digits: number of digits to round to
 make_med_table <- function(df_sub, group_name, month_levels, digits = 1) {
-  # Main 3-row table: 1, 2, 3+
-  main_part <- df_sub %>%
-    mutate(
-      count_multiple = factor(count_multiple, levels = c("1", "2", "3+")),
-      month_label = paste("Month", sub("month_", "", month)),
-      cell = paste0(n, "\n(", format(round(percent, digits), digits), "%)")
-    ) %>%
-    select(count_multiple, month_label, cell) %>%
-    distinct() %>%
-    complete(
-      count_multiple,
-      month_label = month_levels,
-      fill = list(cell = "")
-    ) %>%
-    pivot_wider(
-      id_cols = count_multiple,
-      names_from = month_label,
-      values_from = cell
-    ) %>%
-    arrange(count_multiple) %>%
-    mutate(
-      `Number of Medications` = as.character(count_multiple),
-      group = group_name
-    ) %>%
-    select(group, `Number of Medications`, all_of(month_levels))
   
   # Total row: sum n across medication categories for each month
   total_part <- df_sub %>%
@@ -844,6 +866,47 @@ make_med_table <- function(df_sub, group_name, month_levels, digits = 1) {
       id_cols = c(group, `Number of Medications`),
       names_from = month_label,
       values_from = total_n
+    ) %>%
+    select(group, `Number of Medications`, all_of(month_levels))
+  
+  # Month totals
+  month_totals <- df_sub %>%
+    group_by(month) %>%
+    summarise(total_n = sum(n, na.rm = TRUE), .groups = "drop")
+  
+  # Suppress small counts
+  df_sub <- df_sub %>%
+    left_join(month_totals, by = join_by(month)) %>%
+    mutate(percent = format(round(percent, digits), digits),
+           percent = ifelse(
+             n < 5, paste0("<", max(0.1, 
+                                    format(round(5/total_n*100, digits), digits))), 
+                            percent),
+           n = ifelse(n < 5, "<5", n))
+    
+  # Main 3-row table: 1, 2, 3+
+  main_part <- df_sub %>%
+    mutate(
+      count_multiple = factor(count_multiple, levels = c("1", "2", "3+")),
+      month_label = paste("Month", sub("month_", "", month)),
+      cell = paste0(n, "\n(", percent, "%)")
+    ) %>%
+    select(count_multiple, month_label, cell) %>%
+    distinct() %>%
+    complete(
+      count_multiple,
+      month_label = month_levels,
+      fill = list(cell = "")
+    ) %>%
+    pivot_wider(
+      id_cols = count_multiple,
+      names_from = month_label,
+      values_from = cell
+    ) %>%
+    arrange(count_multiple) %>%
+    mutate(
+      `Number of Medications` = as.character(count_multiple),
+      group = group_name
     ) %>%
     select(group, `Number of Medications`, all_of(month_levels))
   
@@ -942,7 +1005,7 @@ doc <- read_docx() %>%
   body_add_flextable(ft_pre) %>%
   body_add_par("") %>%
   body_add_flextable(ft_post)
-print(doc, target = paste0(wd, "Outputs/", "multiple_meds_within_class", 
+print(doc, target = paste0(wd, "/Outputs/", "multiple_meds_within_class", 
                            today(), ".docx"))
 
 
