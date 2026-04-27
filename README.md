@@ -14,6 +14,7 @@ The following R scripts were used to perform data processing and analyses:
 -   `3_sankey_plot.R`: Create Sankey plots and heatmaps of Patterns of treatment persistence and medication class switching within one year of first-recorded BPD diagnosis.
 -   `4_cohort_medications.R`: Create a summary table listing all antipsychotics, antidepressants, and mood stabilisers prescibed to the cohort between 2000 and 2022.
 -   `5_regression_models.R`: Run regression models examining associations with lithium and antidepressant monotherapy prescription post-diagnosis, and save output.
+-   `6_post_hoc_regression_models.R`: Run regression models examining associations with any antidepressant, antipsychotic, or mood stabiliser prescription post-diagnosis, and save output.
 
 ### Code lists
 
