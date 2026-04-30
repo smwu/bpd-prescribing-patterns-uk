@@ -56,15 +56,27 @@ coerce_atomic_chr <- function(x) {
 
 
 # Load aggregated count data
-trajectories_limit <- read_rds_or_stop("data/trajectories_limit_counts.rds")
-trajectories_limit_li <- read_rds_or_stop("data/trajectories_limit_li_counts.rds")
+trajectories_limit_30 <- read_rds_or_stop("data/trajectories_limit_counts.rds")
+trajectories_limit_li_30 <- read_rds_or_stop("data/trajectories_limit_li_counts.rds")
+trajectories_limit_60 <- read_rds_or_stop("data/trajectories_limit_counts_60.rds")
+trajectories_limit_li_60 <- read_rds_or_stop("data/trajectories_limit_counts_li_60.rds")
+trajectories_limit_1 <- read_rds_or_stop("data/trajectories_limit_counts_1.rds")
+trajectories_limit_li_1 <- read_rds_or_stop("data/trajectories_limit_counts_li_1.rds")
 
 # Check required columns
 req_cols <- c("state_1", "state_2", "state_3", "n")
-miss1 <- setdiff(req_cols, names(trajectories_limit))
-miss2 <- setdiff(req_cols, names(trajectories_limit_li))
-if (length(miss1)) stop(paste("Missing cols in trajectories_limit:", paste(miss1, collapse = ", ")))
-if (length(miss2)) stop(paste("Missing cols in trajectories_limit_li:", paste(miss2, collapse = ", ")))
+miss1 <- setdiff(req_cols, names(trajectories_limit_30))
+miss2 <- setdiff(req_cols, names(trajectories_limit_li_30))
+miss3 <- setdiff(req_cols, names(trajectories_limit_60))
+miss4 <- setdiff(req_cols, names(trajectories_limit_li_60))
+miss5 <- setdiff(req_cols, names(trajectories_limit_1))
+miss6 <- setdiff(req_cols, names(trajectories_limit_li_1))
+if (length(miss1)) stop(paste("Missing cols in trajectories_limit_30:", paste(miss1, collapse = ", ")))
+if (length(miss2)) stop(paste("Missing cols in trajectories_limit_li_30:", paste(miss2, collapse = ", ")))
+if (length(miss3)) stop(paste("Missing cols in trajectories_limit_60:", paste(miss3, collapse = ", ")))
+if (length(miss4)) stop(paste("Missing cols in trajectories_limit_li_60:", paste(miss4, collapse = ", ")))
+if (length(miss5)) stop(paste("Missing cols in trajectories_limit_1:", paste(miss5, collapse = ", ")))
+if (length(miss6)) stop(paste("Missing cols in trajectories_limit_li_1:", paste(miss6, collapse = ", ")))
 
 # ======== Common settings ========
 default_levels <- c(
@@ -909,196 +921,6 @@ make_transition_heatmap <- function(tr, axis_order, title = NULL, pct_digits = 1
                                  barwidth = 15, barheight = 0.8))
 }
 
-#================== Heatmap second and third line (overall) ====================
-
-# Ensure explicit labels for missing states
-trajectories_limit_23 <- trajectories_limit %>%
-  mutate(
-    state_2 = ifelse(is.na(state_2), "No Switch", state_2),
-    state_3 = ifelse(is.na(state_3), "No Switch", state_3)
-  )
-
-# Aggregate second → third, then compute within–state_2 percentages
-transition_matrix_23 <- trajectories_limit_23 %>%
-  group_by(state_2, state_3) %>%
-  summarise(n = sum(n, na.rm = TRUE), .groups = "drop") %>%
-  group_by(state_2) %>%
-  mutate(percentage = (n / sum(n)) * 100, total_n = sum(n)) %>%
-  ungroup()
-
-# Order for both axes
-axis_order_23 <- c("AD", "AP", "MS", "AD; AP", "AD; MS", "AP; MS",
-                   "AD; AP; MS", "No Switch", "Int/Disc")
-
-# Row labels: include n and % of grand total (based on second-line totals)
-grand_total_23 <- sum(unique(transition_matrix_23$total_n), na.rm = TRUE)
-
-sample_sizes_23 <- transition_matrix_23 %>%
-  distinct(state_2, total_n) %>%
-  mutate(
-    state_2      = factor(state_2, levels = axis_order_23),
-    pct_of_total = if (grand_total_23 > 0) (total_n / grand_total_23) * 100 else NA_real_,
-    label_simple = paste0(
-      state_2, "\n",
-      "n=", format(total_n, big.mark = ","), " (",
-      sprintf("%.1f%%", pct_of_total), ")"
-    )
-  ) %>%
-  arrange(state_2)
-
-transition_matrix_final_23 <- transition_matrix_23 %>%
-  left_join(sample_sizes_23 %>% select(state_2, label_simple), by = "state_2") %>%
-  mutate(
-    state_3      = factor(state_3, levels = axis_order_23),
-    label_simple = factor(label_simple, levels = sample_sizes_23$label_simple)
-  )
-
-# Hide "No Switch" row only at plot time (keep percentages unchanged) 
-transition_matrix_plot <- transition_matrix_final_23 %>%
-  dplyr::filter(state_2 != "No Switch") %>%
-  droplevels()  # drop the now-empty y-factor level
-
-# Dynamic max for color scale
-max_percentage_23 <- max(transition_matrix_plot$percentage, na.rm = TRUE)
-color_max_23 <- ceiling(max_percentage_23 / 5) * 5 + 5
-
-# Plot: Fixed row heights (Second → Third)
-second_to_third <- ggplot(
-  transition_matrix_plot,
-  aes(x = state_3, y = label_simple, fill = percentage)
-) +
-  geom_tile(color = "white", linewidth = 0.8) +
-  geom_text(
-    aes(label = sprintf("%.1f%%", percentage)),
-    color = "black", size = 3.5, fontface = "bold"
-  ) +
-  scale_fill_gradient2(
-    low = "#f7fbff", mid = "#4292c6", high = "#08519c",
-    midpoint = color_max_23 / 2, limits = c(0, color_max_23),
-    name = "Percentage (%)"
-  ) +
-  labs(
-    x = "Third-Line Treatment",
-    y = "Second-Line Treatment"
-    # title = "Second → Third (Fixed Row Heights)"
-  ) +
-  theme_minimal() +
-  theme(
-    axis.text.x  = element_text(
-      angle = 45, hjust = 1, vjust = 1,
-      face = "bold", size = 10
-    ),
-    axis.text.y  = element_text(face = "bold", size = 8, lineheight = 0.9),
-    axis.title.x = element_text(size = 11, face = "bold", margin = margin(t = 10)),
-    axis.title.y = element_text(size = 11, face = "bold", margin = margin(r = 10)),
-    panel.grid   = element_blank(),
-    legend.position = "bottom",
-    legend.direction = "horizontal",
-    legend.title = element_text(size = 8),
-    legend.text  = element_text(size = 8),
-    plot.title   = element_text(size = 12, face = "bold", hjust = 0.5, margin = margin(b = 10))
-  ) +
-  guides(
-    fill = guide_colorbar(
-      title.position = "top", title.hjust = 0.5,
-      barwidth = 15, barheight = 0.8
-    )
-  )
-
-# ================ Second → Third transitions (Lithium-focused) ================
-
-trajectories_limit_li_23 <- trajectories_limit_li %>%
-  mutate(
-    state_2 = ifelse(is.na(state_2), "No Switch", state_2),
-    state_3 = ifelse(is.na(state_3), "No Switch", state_3)
-  )
-
-transition_matrix_23_li <- trajectories_limit_li_23 %>%
-  group_by(state_2, state_3) %>%
-  summarise(n = sum(n, na.rm = TRUE), .groups = "drop") %>%
-  group_by(state_2) %>%
-  mutate(percentage = (n / sum(n)) * 100, total_n = sum(n)) %>%
-  ungroup()
-
-axis_order_li_23 <- c(
-  "Lithium", "Lithium; AD", "Lithium; AP", "Lithium; MS", "Lithium; 2+",
-  "Non-Lithium", "Switch Non-Lithium", "No Switch", "Int/Disc"
-)
-
-grand_total_23_li <- sum(unique(transition_matrix_23_li$total_n), na.rm = TRUE)
-
-sample_sizes_23_li <- transition_matrix_23_li %>%
-  distinct(state_2, total_n) %>%
-  mutate(
-    state_2      = factor(state_2, levels = axis_order_li_23),
-    pct_of_total = if (grand_total_23_li > 0) (total_n / grand_total_23_li) * 100 else NA_real_,
-    label_simple = paste0(
-      state_2, "\n",
-      "n=", format(total_n, big.mark = ","), " (",
-      sprintf("%.1f%%", pct_of_total), ")"
-    )
-  ) %>%
-  arrange(state_2)
-
-transition_matrix_final_23_li <- transition_matrix_23_li %>%
-  left_join(sample_sizes_23_li %>% select(state_2, label_simple), by = "state_2") %>%
-  mutate(
-    state_3      = factor(state_3, levels = axis_order_li_23),
-    label_simple = factor(label_simple, levels = sample_sizes_23_li$label_simple)
-  )
-
-# Hide "No Switch" row only at plot time (keep percentages unchanged) 
-transition_matrix_plot_li <- transition_matrix_final_23_li %>%
-  dplyr::filter(state_2 != "No Switch") %>%
-  droplevels()  # drop the now-empty y-factor level
-
-max_percentage_23_li <- max(transition_matrix_plot_li$percentage, na.rm = TRUE)
-color_max_23_li <- ceiling(max_percentage_23_li / 5) * 5 + 5
-
-second_to_third_li <- ggplot(
-  transition_matrix_plot_li,
-  aes(x = state_3, y = label_simple, fill = percentage)
-) +
-  geom_tile(color = "white", linewidth = 0.8) +
-  geom_text(
-    aes(label = sprintf("%.1f%%", percentage)),
-    color = "black", size = 3.5, fontface = "bold"
-  ) +
-  scale_fill_gradient2(
-    low = "#f7fbff", mid = "#4292c6", high = "#08519c",
-    midpoint = color_max_23_li / 2, limits = c(0, color_max_23_li),
-    name = "Percentage (%)"
-  ) +
-  labs(
-    x = "Third-Line Treatment",
-    y = "Second-Line Treatment"
-    # title = "Second → Third (Lithium, Fixed Row Heights)"
-  ) +
-  theme_minimal() +
-  theme(
-    axis.text.x  = element_text(
-      angle = 45, hjust = 1, vjust = 1,
-      face = "bold", size = 10
-    ),
-    axis.text.y  = element_text(face = "bold", size = 8, lineheight = 0.9),
-    axis.title.x = element_text(size = 11, face = "bold", margin = margin(t = 10)),
-    axis.title.y = element_text(size = 11, face = "bold", margin = margin(r = 10)),
-    panel.grid   = element_blank(),
-    legend.position = "bottom",
-    legend.direction = "horizontal",
-    legend.title = element_text(size = 8),
-    legend.text  = element_text(size = 8),
-    plot.title   = element_text(size = 12, face = "bold", hjust = 0.5, margin = margin(b = 10))
-  ) +
-  guides(
-    fill = guide_colorbar(
-      title.position = "top", title.hjust = 0.5,
-      barwidth = 15, barheight = 0.8
-    )
-  )
-
-
-
 
 # ======== UI ========
 
@@ -1165,7 +987,8 @@ ui <- fluidPage(
           style = "margin: 6px 0 10px 10px; padding-left: 14px;",
           tags$li("Pick an initial state to highlight specific trajectories."),
           tags$li("Toggle how flows are coloured."),
-          tags$li("Optionally focus on lithium.")
+          tags$li("Optionally focus on lithium."),
+          tags$li("Set the concurrency window as 1-day, 30-days, or 60-days.")
         )
       ),
       
@@ -1202,6 +1025,17 @@ ui <- fluidPage(
       # checkboxInput("mosaic_mode", "Heatmap → Mosaic layout", FALSE),
       # sliderInput("min_prop", "Mosaic minimum segment proportion",
       #             min = 0, max = 0.05, value = 0.01, step = 0.002, ticks = FALSE),
+      tags$hr(),
+      h5("Treatment Window"),
+      helpText(paste0("Choose the window of days for which medications prescribed ",
+                      "within this window will be considered concurrent.")),
+      selectInput(
+        "window_days",
+        NULL, 
+        choices = c("1-day" = 1, "30-day" = 30, "60-day" = 60),
+        selected = 30
+      ),
+      
       tags$hr(),
       
       ### Downloading alluvial and heatmap plots
@@ -1310,9 +1144,24 @@ ui <- fluidPage(
 server <- function(input, output, session) {
   
   current_traj <- reactive({
-    tr <- if (isTRUE(input$lithium_mode)) trajectories_limit_li else trajectories_limit
-    if (isTRUE(input$filter_AD) && "state_1" %in% names(tr)) {
-      tr <- dplyr::filter(tr, .data$state_1 == "AD")
+    wd <- as.numeric(input$window_days)
+    
+    tr <- if (isTRUE(input$lithium_mode)) {
+      if (wd == 1) {
+        trajectories_limit_li_1
+      } else if (wd == 60) {
+        trajectories_limit_li_60
+      } else {
+        trajectories_limit_li_30
+      }
+    } else {
+      if (wd == 1) {
+        trajectories_limit_1
+      } else if (wd == 60) {
+        trajectories_limit_60
+      } else {
+        trajectories_limit_30
+      }
     }
     tr
   })
@@ -1515,7 +1364,8 @@ server <- function(input, output, session) {
   })
   
   
-  # ======== Heatmap 
+  # ======== Heatmap first -> second =============
+  
   output$heatmap_title <- renderUI({
     if (isTRUE(input$lithium_mode)) {
       h4("Heat map of prescribing transitions with lithium focus")
@@ -1548,6 +1398,7 @@ server <- function(input, output, session) {
     HTML(paste0("<p style='font-size:14px; line-height:1.4;'>", desc, "</p>"))
   })
   
+  ## Overall heatmap first -> second
   
   output$heat_overall <- renderPlot({
     tr <- current_traj()
@@ -1559,29 +1410,199 @@ server <- function(input, output, session) {
     )
   })
   
-  # Lithium heatmap (only shown in UI when lithium_mode is TRUE)
+  ## Lithium heatmap first -> second (only shown in UI when lithium_mode is TRUE)
+  
   output$heat_lithium <- renderPlot({
+    tr <- current_traj()
     axis_order <- c(
       "Lithium", "Lithium; AD", "Lithium; AP",
       "Lithium; MS", "Lithium; 2+",
       "Non-Lithium", "Switch Non-Lithium", "No Switch", "Int/Disc"
     )
     make_transition_heatmap(
-      trajectories_limit_li, axis_order,
+      tr, axis_order,
       title = "Initial \u2192 Second-line (Lithium)"
     )
   })
   
-  # Second → Third heatmap (overall)
+  
+  # ======== Heatmap second -> third =============
+  
+  ## Overall heatmap second -> third
+  
   output$heat_overall_23 <- renderPlot({
-    second_to_third
+    tr <- current_traj()
+    
+    tr_23 <- tr %>%
+      mutate(
+        state_2 = ifelse(is.na(state_2), "No Switch", state_2),
+        state_3 = ifelse(is.na(state_3), "No Switch", state_3)
+      )
+    
+    transition_matrix_23 <- tr_23 %>%
+      group_by(state_2, state_3) %>%
+      summarise(n = sum(n, na.rm = TRUE), .groups = "drop") %>%
+      group_by(state_2) %>%
+      mutate(percentage = (n / sum(n)) * 100, total_n = sum(n)) %>%
+      ungroup()
+    
+    axis_order_23 <- c("AD", "AP", "MS", "AD; AP", "AD; MS", "AP; MS",
+                       "AD; AP; MS", "No Switch", "Int/Disc")
+    
+    grand_total_23 <- sum(unique(transition_matrix_23$total_n), na.rm = TRUE)
+    
+    sample_sizes_23 <- transition_matrix_23 %>%
+      distinct(state_2, total_n) %>%
+      mutate(
+        state_2      = factor(state_2, levels = axis_order_23),
+        pct_of_total = if (grand_total_23 > 0) (total_n / grand_total_23) * 100 else NA_real_,
+        label_simple = paste0(
+          state_2, "\n",
+          "n=", format(total_n, big.mark = ","), " (",
+          sprintf("%.1f%%", pct_of_total), ")"
+        )
+      ) %>%
+      arrange(state_2)
+    
+    transition_matrix_final_23 <- transition_matrix_23 %>%
+      left_join(sample_sizes_23 %>% select(state_2, label_simple), by = "state_2") %>%
+      mutate(
+        state_3      = factor(state_3, levels = axis_order_23),
+        label_simple = factor(label_simple, levels = sample_sizes_23$label_simple)
+      )
+    
+    transition_matrix_plot <- transition_matrix_final_23 %>%
+      dplyr::filter(state_2 != "No Switch") %>%
+      droplevels()
+    
+    max_percentage_23 <- max(transition_matrix_plot$percentage, na.rm = TRUE)
+    color_max_23 <- ceiling(max_percentage_23 / 5) * 5 + 5
+    
+    ggplot(
+      transition_matrix_plot,
+      aes(x = state_3, y = label_simple, fill = percentage)
+    ) +
+      geom_tile(color = "white", linewidth = 0.8) +
+      geom_text(
+        aes(label = sprintf("%.1f%%", percentage)),
+        color = "black", size = 3.5, fontface = "bold"
+      ) +
+      scale_fill_gradient2(
+        low = "#f7fbff", mid = "#4292c6", high = "#08519c",
+        midpoint = color_max_23 / 2, limits = c(0, color_max_23),
+        name = "Percentage (%)"
+      ) +
+      labs(x = "Third-Line Treatment", y = "Second-Line Treatment") +
+      theme_minimal() +
+      theme(
+        axis.text.x  = element_text(angle = 45, hjust = 1, vjust = 1, face = "bold", size = 10),
+        axis.text.y  = element_text(face = "bold", size = 8, lineheight = 0.9),
+        axis.title.x = element_text(size = 11, face = "bold", margin = margin(t = 10)),
+        axis.title.y = element_text(size = 11, face = "bold", margin = margin(r = 10)),
+        panel.grid   = element_blank(),
+        legend.position = "bottom",
+        legend.direction = "horizontal",
+        legend.title = element_text(size = 8),
+        legend.text  = element_text(size = 8),
+        plot.title   = element_text(size = 12, face = "bold", hjust = 0.5, margin = margin(b = 10))
+      ) +
+      guides(
+        fill = guide_colorbar(
+          title.position = "top", title.hjust = 0.5,
+          barwidth = 15, barheight = 0.8
+        )
+      )
   })
   
-  # Second → Third heatmap (Lithium-focused)
+  
+  ## Lithium heatmap first -> second
+  
   output$heat_lithium_23 <- renderPlot({
-    second_to_third_li
+    tr <- current_traj()
+    
+    tr_23 <- tr %>%
+      mutate(
+        state_2 = ifelse(is.na(state_2), "No Switch", state_2),
+        state_3 = ifelse(is.na(state_3), "No Switch", state_3)
+      )
+    
+    transition_matrix_23_li <- tr_23 %>%
+      group_by(state_2, state_3) %>%
+      summarise(n = sum(n, na.rm = TRUE), .groups = "drop") %>%
+      group_by(state_2) %>%
+      mutate(percentage = (n / sum(n)) * 100, total_n = sum(n)) %>%
+      ungroup()
+    
+    axis_order_li_23 <- c(
+      "Lithium", "Lithium; AD", "Lithium; AP", "Lithium; MS", "Lithium; 2+",
+      "Non-Lithium", "Switch Non-Lithium", "No Switch", "Int/Disc"
+    )
+    
+    grand_total_23_li <- sum(unique(transition_matrix_23_li$total_n), na.rm = TRUE)
+    
+    sample_sizes_23_li <- transition_matrix_23_li %>%
+      distinct(state_2, total_n) %>%
+      mutate(
+        state_2      = factor(state_2, levels = axis_order_li_23),
+        pct_of_total = if (grand_total_23_li > 0) (total_n / grand_total_23_li) * 100 else NA_real_,
+        label_simple = paste0(
+          state_2, "\n",
+          "n=", format(total_n, big.mark = ","), " (",
+          sprintf("%.1f%%", pct_of_total), ")"
+        )
+      ) %>%
+      arrange(state_2)
+    
+    transition_matrix_final_23_li <- transition_matrix_23_li %>%
+      left_join(sample_sizes_23_li %>% select(state_2, label_simple), by = "state_2") %>%
+      mutate(
+        state_3      = factor(state_3, levels = axis_order_li_23),
+        label_simple = factor(label_simple, levels = sample_sizes_23_li$label_simple)
+      )
+    
+    transition_matrix_plot_li <- transition_matrix_final_23_li %>%
+      dplyr::filter(state_2 != "No Switch") %>%
+      droplevels()
+    
+    max_percentage_23_li <- max(transition_matrix_plot_li$percentage, na.rm = TRUE)
+    color_max_23_li <- ceiling(max_percentage_23_li / 5) * 5 + 5
+    
+    ggplot(
+      transition_matrix_plot_li,
+      aes(x = state_3, y = label_simple, fill = percentage)
+    ) +
+      geom_tile(color = "white", linewidth = 0.8) +
+      geom_text(
+        aes(label = sprintf("%.1f%%", percentage)),
+        color = "black", size = 3.5, fontface = "bold"
+      ) +
+      scale_fill_gradient2(
+        low = "#f7fbff", mid = "#4292c6", high = "#08519c",
+        midpoint = color_max_23_li / 2, limits = c(0, color_max_23_li),
+        name = "Percentage (%)"
+      ) +
+      labs(x = "Third-Line Treatment", y = "Second-Line Treatment") +
+      theme_minimal() +
+      theme(
+        axis.text.x  = element_text(angle = 45, hjust = 1, vjust = 1, face = "bold", size = 10),
+        axis.text.y  = element_text(face = "bold", size = 8, lineheight = 0.9),
+        axis.title.x = element_text(size = 11, face = "bold", margin = margin(t = 10)),
+        axis.title.y = element_text(size = 11, face = "bold", margin = margin(r = 10)),
+        panel.grid   = element_blank(),
+        legend.position = "bottom",
+        legend.direction = "horizontal",
+        legend.title = element_text(size = 8),
+        legend.text  = element_text(size = 8),
+        plot.title   = element_text(size = 12, face = "bold", hjust = 0.5, margin = margin(b = 10))
+      ) +
+      guides(
+        fill = guide_colorbar(
+          title.position = "top", title.hjust = 0.5,
+          barwidth = 15, barheight = 0.8
+        )
+      )
   })
-  
+      
   # ======== Interactive Sankey (percent tooltips; hide flows visually)
   output$sankey_interactive_caption <- renderUI({
     hs <- as.character(input$highlight_state)
@@ -1781,13 +1802,30 @@ server <- function(input, output, session) {
     content  = function(file) {
       
       choice <- input$which_heatmap_download
+      wd <- as.numeric(input$window_days)
+      
+      tr_overall <- if (wd == 1) {
+        trajectories_limit_1
+      } else if (wd == 60) {
+        trajectories_limit_60
+      } else {
+        trajectories_limit_30
+      }
+      
+      tr_li <- if (wd == 1) {
+        trajectories_limit_li_1
+      } else if (wd == 60) {
+        trajectories_limit_li_60
+      } else {
+        trajectories_limit_li_30
+      }
       
       if (choice == "fs_overall") {
         # First → Second (overall)
         axis_order <- c("AD", "AP", "MS", "AD; AP", "AD; MS", "AP; MS",
                         "AD; AP; MS", "No Switch", "Int/Disc")
         p <- make_transition_heatmap(
-          trajectories_limit, axis_order = axis_order,
+          tr_overall, axis_order = axis_order,
           title = "Initial \u2192 Second-line (Heat map)"
         )
         
@@ -1799,17 +1837,173 @@ server <- function(input, output, session) {
           "Non-Lithium", "Switch Non-Lithium", "No Switch", "Int/Disc"
         )
         p <- make_transition_heatmap(
-          trajectories_limit_li, axis_order = axis_order,
+          tr_li, axis_order = axis_order,
           title = "Initial \u2192 Second-line (Lithium)"
         )
         
       } else if (choice == "st_overall") {
         # Second → Third (overall)
-        p <- second_to_third
+        tr_23 <- tr_overall %>%
+          mutate(
+            state_2 = ifelse(is.na(state_2), "No Switch", state_2),
+            state_3 = ifelse(is.na(state_3), "No Switch", state_3)
+          )
         
-      } else {  # "st_lithium"
+        transition_matrix_23 <- tr_23 %>%
+          group_by(state_2, state_3) %>%
+          summarise(n = sum(n, na.rm = TRUE), .groups = "drop") %>%
+          group_by(state_2) %>%
+          mutate(percentage = (n / sum(n)) * 100, total_n = sum(n)) %>%
+          ungroup()
+        
+        axis_order_23 <- c("AD", "AP", "MS", "AD; AP", "AD; MS", "AP; MS",
+                           "AD; AP; MS", "No Switch", "Int/Disc")
+        
+        grand_total_23 <- sum(unique(transition_matrix_23$total_n), na.rm = TRUE)
+        
+        sample_sizes_23 <- transition_matrix_23 %>%
+          distinct(state_2, total_n) %>%
+          mutate(
+            state_2      = factor(state_2, levels = axis_order_23),
+            pct_of_total = if (grand_total_23 > 0) (total_n / grand_total_23) * 100 else NA_real_,
+            label_simple = paste0(
+              state_2, "\n",
+              "n=", format(total_n, big.mark = ","), " (",
+              sprintf("%.1f%%", pct_of_total), ")"
+            )
+          ) %>%
+          arrange(state_2)
+        
+        transition_matrix_final_23 <- transition_matrix_23 %>%
+          left_join(sample_sizes_23 %>% select(state_2, label_simple), by = "state_2") %>%
+          mutate(
+            state_3      = factor(state_3, levels = axis_order_23),
+            label_simple = factor(label_simple, levels = sample_sizes_23$label_simple)
+          )
+        
+        transition_matrix_plot <- transition_matrix_final_23 %>%
+          dplyr::filter(state_2 != "No Switch") %>%
+          droplevels()
+        
+        max_percentage_23 <- max(transition_matrix_plot$percentage, na.rm = TRUE)
+        color_max_23 <- ceiling(max_percentage_23 / 5) * 5 + 5
+        
+        p <- ggplot(
+          transition_matrix_plot,
+          aes(x = state_3, y = label_simple, fill = percentage)
+        ) +
+          geom_tile(color = "white", linewidth = 0.8) +
+          geom_text(
+            aes(label = sprintf("%.1f%%", percentage)),
+            color = "black", size = 3.5, fontface = "bold"
+          ) +
+          scale_fill_gradient2(
+            low = "#f7fbff", mid = "#4292c6", high = "#08519c",
+            midpoint = color_max_23 / 2, limits = c(0, color_max_23),
+            name = "Percentage (%)"
+          ) +
+          labs(x = "Third-Line Treatment", y = "Second-Line Treatment") +
+          theme_minimal() +
+          theme(
+            axis.text.x  = element_text(angle = 45, hjust = 1, vjust = 1, face = "bold", size = 10),
+            axis.text.y  = element_text(face = "bold", size = 8, lineheight = 0.9),
+            axis.title.x = element_text(size = 11, face = "bold", margin = margin(t = 10)),
+            axis.title.y = element_text(size = 11, face = "bold", margin = margin(r = 10)),
+            panel.grid   = element_blank(),
+            legend.position = "bottom",
+            legend.direction = "horizontal",
+            legend.title = element_text(size = 8),
+            legend.text  = element_text(size = 8)
+          ) +
+          guides(
+            fill = guide_colorbar(
+              title.position = "top", title.hjust = 0.5,
+              barwidth = 15, barheight = 0.8
+            )
+          )
+        
+      } else {  # st_lithium
         # Second → Third (lithium-focused)
-        p <- second_to_third_li
+        tr_23 <- tr_li %>%
+          mutate(
+            state_2 = ifelse(is.na(state_2), "No Switch", state_2),
+            state_3 = ifelse(is.na(state_3), "No Switch", state_3)
+          )
+        
+        transition_matrix_23_li <- tr_23 %>%
+          group_by(state_2, state_3) %>%
+          summarise(n = sum(n, na.rm = TRUE), .groups = "drop") %>%
+          group_by(state_2) %>%
+          mutate(percentage = (n / sum(n)) * 100, total_n = sum(n)) %>%
+          ungroup()
+        
+        axis_order_li_23 <- c(
+          "Lithium", "Lithium; AD", "Lithium; AP", "Lithium; MS", "Lithium; 2+",
+          "Non-Lithium", "Switch Non-Lithium", "No Switch", "Int/Disc"
+        )
+        
+        grand_total_23_li <- sum(unique(transition_matrix_23_li$total_n), na.rm = TRUE)
+        
+        sample_sizes_23_li <- transition_matrix_23_li %>%
+          distinct(state_2, total_n) %>%
+          mutate(
+            state_2      = factor(state_2, levels = axis_order_li_23),
+            pct_of_total = if (grand_total_23_li > 0) (total_n / grand_total_23_li) * 100 else NA_real_,
+            label_simple = paste0(
+              state_2, "\n",
+              "n=", format(total_n, big.mark = ","), " (",
+              sprintf("%.1f%%", pct_of_total), ")"
+            )
+          ) %>%
+          arrange(state_2)
+        
+        transition_matrix_final_23_li <- transition_matrix_23_li %>%
+          left_join(sample_sizes_23_li %>% select(state_2, label_simple), by = "state_2") %>%
+          mutate(
+            state_3      = factor(state_3, levels = axis_order_li_23),
+            label_simple = factor(label_simple, levels = sample_sizes_23_li$label_simple)
+          )
+        
+        transition_matrix_plot_li <- transition_matrix_final_23_li %>%
+          dplyr::filter(state_2 != "No Switch") %>%
+          droplevels()
+        
+        max_percentage_23_li <- max(transition_matrix_plot_li$percentage, na.rm = TRUE)
+        color_max_23_li <- ceiling(max_percentage_23_li / 5) * 5 + 5
+        
+        p <- ggplot(
+          transition_matrix_plot_li,
+          aes(x = state_3, y = label_simple, fill = percentage)
+        ) +
+          geom_tile(color = "white", linewidth = 0.8) +
+          geom_text(
+            aes(label = sprintf("%.1f%%", percentage)),
+            color = "black", size = 3.5, fontface = "bold"
+          ) +
+          scale_fill_gradient2(
+            low = "#f7fbff", mid = "#4292c6", high = "#08519c",
+            midpoint = color_max_23_li / 2, limits = c(0, color_max_23_li),
+            name = "Percentage (%)"
+          ) +
+          labs(x = "Third-Line Treatment", y = "Second-Line Treatment") +
+          theme_minimal() +
+          theme(
+            axis.text.x  = element_text(angle = 45, hjust = 1, vjust = 1, face = "bold", size = 10),
+            axis.text.y  = element_text(face = "bold", size = 8, lineheight = 0.9),
+            axis.title.x = element_text(size = 11, face = "bold", margin = margin(t = 10)),
+            axis.title.y = element_text(size = 11, face = "bold", margin = margin(r = 10)),
+            panel.grid   = element_blank(),
+            legend.position = "bottom",
+            legend.direction = "horizontal",
+            legend.title = element_text(size = 8),
+            legend.text  = element_text(size = 8)
+          ) +
+          guides(
+            fill = guide_colorbar(
+              title.position = "top", title.hjust = 0.5,
+              barwidth = 15, barheight = 0.8
+            )
+          )
       }
       
       ggsave(file, p, dpi = 300, width = 10, height = 6, bg = "white")

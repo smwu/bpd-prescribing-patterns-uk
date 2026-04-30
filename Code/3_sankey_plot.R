@@ -722,6 +722,11 @@ trajectories_limit_60 <- derive_trajectories(
 # n = 36705 after suppressing small counts
 trajectories_limit_counts_60 <- make_safe_counts(trajectories_limit_60)
 
+# # Save for Shiny app
+# saveRDS(trajectories_limit_counts_60,
+#         paste0("bpd-prescribing-uk-shiny/data/",
+#                "trajectories_limit_counts_60.rds"))
+
 alluvial_plot_60 <- create_sankey(trajectories_limit = trajectories_limit_counts_60)
 
 alluvial_plot_60
@@ -752,6 +757,11 @@ trajectories_limit_1 <- derive_trajectories(
 
 # n = 37085 after suppressing small counts
 trajectories_limit_counts_1 <- make_safe_counts(trajectories_limit_1)
+
+# # Save for Shiny app
+# saveRDS(trajectories_limit_counts_1,
+#         paste0("bpd-prescribing-uk-shiny/data/",
+#                "trajectories_limit_counts_1.rds"))
 
 alluvial_plot_1 <- create_sankey(trajectories_limit = trajectories_limit_counts_1)
 
@@ -920,6 +930,12 @@ trajectories_limit_li_60 <- derive_trajectories(
 
 trajectories_limit_counts_li_60 <- make_safe_counts(trajectories_limit_li_60)
 
+# # Save for Shiny app
+# n = 36755 after suppressing small counts
+# saveRDS(trajectories_limit_counts_li_60, 
+#         paste0("bpd-prescribing-uk-shiny/data/",
+#                "trajectories_limit_counts_li_60.rds"))
+
 alluvial_plot_li_60 <- create_sankey(trajectories_limit = trajectories_limit_counts_li_60,
                                      state_levels = state_levels_li, 
                                      state_colors = state_colors_li,
@@ -964,6 +980,12 @@ trajectories_limit_li_1 <- derive_trajectories(
   lithium = TRUE)
 
 trajectories_limit_counts_li_1 <- make_safe_counts(trajectories_limit_li_1)
+
+# # Save for Shiny app
+# n = 37080 after suppressing small counts
+# saveRDS(trajectories_limit_counts_li_1, 
+#         paste0("bpd-prescribing-uk-shiny/data/",
+#                "trajectories_limit_counts_li_1.rds"))
 
 alluvial_plot_li_1 <- create_sankey(trajectories_limit = trajectories_limit_counts_li_1,
                                      state_levels = state_levels_li, 

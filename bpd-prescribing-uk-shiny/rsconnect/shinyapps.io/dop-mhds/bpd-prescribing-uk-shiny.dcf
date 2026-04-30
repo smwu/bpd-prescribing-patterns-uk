@@ -5,7 +5,7 @@ account: dop-mhds
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 16426481
-bundleId: 11444527
+bundleId: 11928966
 url: https://dop-mhds.shinyapps.io/bpd-prescribing-uk-shiny/
 version: 1
 asMultiple: FALSE
